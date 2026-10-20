@@ -66,9 +66,10 @@ user links their account. The full documentation is in
   `PUT /rooms/{id}/send/m.room.message/{txn}`, `POST /createRoom` (a direct,
   unencrypted room for a person Gladys writes to first),
   `POST /_matrix/media/v3/upload` for camera images. A 429 is honored.
-- Rooms listed in the configuration are watched (triggers only); any other
-  room an allowed person invited the bot into is a private conversation with
-  Gladys (`linkContact`, `publishMessage`, `onSendMessage`).
+- Rooms listed in the configuration are watched (triggers only); a room with
+  only one allowed person and the bot is a private conversation with Gladys
+  (`linkContact`, `publishMessage`, `onSendMessage`); any other room is
+  ignored, so Gladys never answers where others can read.
 - Only `m.text` messages count: notices (other bots), edits and the bot's own
   messages are ignored, so a scene answering a message cannot loop.
 

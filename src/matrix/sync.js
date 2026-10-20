@@ -58,7 +58,11 @@ export function parseSync(response, botUserId) {
       if (typeof event.sender !== 'string' || event.sender === botUserId) {
         continue; // its own messages: never an input, so no loop
       }
-      const ts = Number.isFinite(event.origin_server_ts) ? event.origin_server_ts : 0;
+      // Out of the Date range (a hostile server): treated as very old, hence skipped.
+      const ts =
+        Number.isFinite(event.origin_server_ts) && Math.abs(event.origin_server_ts) <= 8.64e15
+          ? event.origin_server_ts
+          : 0;
       if (event.type === 'm.room.encrypted') {
         encrypted.push({ roomId, sender: event.sender, ts });
         continue;

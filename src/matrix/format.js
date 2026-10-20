@@ -20,18 +20,30 @@ function inline(text) {
       if (/^`[^`\n]+`$/.test(part)) {
         return `<code>${escapeHtml(part.slice(1, -1))}</code>`;
       }
-      return escapeHtml(part)
-        .replace(
-          /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
-          (_, label, url) => `<a href="${url}">${label}</a>`,
-        )
-        .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-        .replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
-        .replace(/~~([^~\n]+)~~/g, '<del>$1</del>')
-        .replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, '$1<em>$2</em>')
-        .replace(/(^|[^_\w])_([^_\n]+)_(?!\w)/g, '$1<em>$2</em>');
+      // Links become placeholders first: the emphasis rules must not touch an address.
+      const links = [];
+      const escaped = escapeHtml(part).replace(
+        /\[([^\]\n]+)\]\((https?:\/\/[^\s)]+)\)/g,
+        (_, label, url) => {
+          links.push({ label, url });
+          return `\uE000${links.length - 1}\uE000`;
+        },
+      );
+      return emphasis(escaped).replace(/\uE000(\d+)\uE000/g, (_, index) => {
+        const { label, url } = links[Number(index)];
+        return `<a href="${url}">${emphasis(label)}</a>`;
+      });
     })
     .join('');
+}
+
+function emphasis(html) {
+  return html
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_\n]+)__/g, '<strong>$1</strong>')
+    .replace(/~~([^~\n]+)~~/g, '<del>$1</del>')
+    .replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, '$1<em>$2</em>')
+    .replace(/(^|[^_\w])_([^_\n]+)_(?!\w)/g, '$1<em>$2</em>');
 }
 
 /**

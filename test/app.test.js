@@ -9,6 +9,7 @@ import { GladysApiError } from '@gladysassistant/integration-sdk';
 import {
   ACTION_KEY,
   LOST_AFTER_MS,
+  MEMBERS_CACHE_MS,
   MAX_MESSAGE_AGE_MS,
   SCENE_ACTION_KEY,
   TRIGGERS,
@@ -224,8 +225,9 @@ test('a message of Gladys to a person without a room opens an unencrypted one', 
   assert.equal(world.server.sent[0].content.body, 'Backup failed');
   assert.equal(world.store.data.contactRooms[ALICE], '!created-1:matrix.test');
 
-  // The person left that room: a new one is opened.
-  world.server.forbidSend.add('!created-1:matrix.test');
+  // The person left that room (seen once the member list is a minute old): a new one is opened.
+  world.server.members.set('!created-1:matrix.test', [BOT]);
+  world.clock.time += MEMBERS_CACHE_MS;
   await world.fake.sendMessage({ id: ALICE }, { text: 'Again', file: null });
   assert.equal(world.server.sent.at(-1).roomId, '!created-2:matrix.test');
 
@@ -365,4 +367,94 @@ test('parseCommand: prefix, word in lower case, the rest as arguments', () => {
   assert.deepEqual(parseCommand('/lumières on', '/'), { command: 'lumières', args: 'on' });
   assert.equal(parseCommand('! lights', '!'), null);
   assert.equal(parseCommand('lights', '!'), null);
+});
+
+// --- Regressions found in review ------------------------------------------------------
+
+test('two configurations saved in a row leave one sync loop, and stop() stops it', async (t) => {
+  const world = await connected(t);
+  await Promise.all([
+    world.fake.configUpdated({ ...BASE_CONFIG }),
+    world.fake.configUpdated({ ...BASE_CONFIG }),
+  ]);
+  await settle();
+  await deliver(world, joinedRoom(ROOM, [message(ALICE, 'hello')]));
+  assert.equal(world.fake.sceneEvents.length, 1, 'one loop: one trigger');
+  await world.app.stop();
+  const syncs = world.server.requests.filter((request) => request.path === '/sync').length;
+  world.server.push({});
+  world.server.push({});
+  await settle();
+  assert.equal(world.server.requests.filter((request) => request.path === '/sync').length, syncs);
+});
+
+test('a group room that is not watched is never a conversation with Gladys', async (t) => {
+  const world = await connected(t, { config: { ...BASE_CONFIG, rooms: '' } });
+  world.server.members.set(ROOM, [BOT, ALICE, '@bob:matrix.test']);
+  await deliver(world, joinedRoom(ROOM, [message(ALICE, 'What time is it?')]));
+  assert.deepEqual(world.fake.messages, []);
+  assert.deepEqual(world.server.sent, [], 'no answer, no instructions');
+  assert.equal(world.store.data.contactRooms, undefined);
+});
+
+test('a failure right after a recovery is not a loss; no restored without a loss', async (t) => {
+  // The homeserver is slow to come up at start: no lost, then no restored.
+  const server = createFakeHomeserver();
+  server.down = 'ECONNREFUSED';
+  const world = await createWorld({ server });
+  t.after(() => world.app.stop());
+  let waited = 0;
+  while (waited < 2 * LOST_AFTER_MS) {
+    waited += await world.wake();
+  }
+  server.down = null;
+  await world.wake();
+  assert.equal(world.app.connection, 'connected');
+  assert.deepEqual(world.fake.sceneEvents, []);
+  // One failed sync just after: still connected, nothing fired.
+  server.down = 'ECONNREFUSED';
+  server.push({});
+  await settle();
+  assert.equal(world.app.connection, 'connected');
+  assert.deepEqual(world.fake.sceneEvents, []);
+});
+
+test('a message of Gladys right after the start waits for the login', async (t) => {
+  const server = createFakeHomeserver();
+  const world = await createWorld({ server, config: {} });
+  t.after(() => world.app.stop());
+  world.server.joined.add(PRIVATE_ROOM);
+  const configured = world.fake.configUpdated({ ...BASE_CONFIG });
+  const sent = world.fake.sendMessage({ id: ALICE }, { text: 'Gladys was updated', file: null });
+  await configured;
+  const ack = await sent;
+  assert.equal(ack.success, true);
+  assert.equal(world.server.sent.at(-1).content.body, 'Gladys was updated');
+});
+
+test('a message refused as too large does not open a new room each time', async (t) => {
+  const world = await connected(t);
+  await world.fake.sendMessage({ id: ALICE }, { text: 'first', file: null });
+  world.server.rejectSend = true;
+  const ack = await world.fake.sendMessage({ id: ALICE }, { text: 'x'.repeat(100), file: null });
+  assert.equal(ack.success, false);
+  assert.match(ack.error, /request refused/);
+  assert.equal(world.server.created.length, 1);
+});
+
+test('the scene data stays within 1000 characters, a broken event never blocks the sync', async (t) => {
+  const world = await connected(t);
+  const long = `!${'a'.repeat(1500)} ${'b'.repeat(1500)}`;
+  const broken = {
+    type: 'm.room.message',
+    sender: ALICE,
+    origin_server_ts: 9e15,
+    content: { msgtype: 'm.text', body: '!x' },
+  };
+  await deliver(world, joinedRoom(ROOM, [broken, message(ALICE, long)]));
+  const command = world.fake.sceneEvents.find((event) => event.key === TRIGGERS.COMMAND);
+  assert.equal(command.data.command.length, 1000);
+  assert.equal(command.data.arguments.length, 1000);
+  assert.equal(command.data.text.length, 1000);
+  assert.equal(world.fake.sceneEvents.length, 2, 'the broken event is skipped as too old');
 });

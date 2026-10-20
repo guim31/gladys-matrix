@@ -77,6 +77,12 @@ export const ERROR_TEXT = {
     de: 'Raum oder Alias auf dem Server nicht gefunden',
     es: 'sala o alias no encontrado en el servidor',
   },
+  [ERROR_KINDS.REJECTED]: {
+    en: 'request refused by the homeserver (message too long?)',
+    fr: 'requête refusée par le serveur (message trop long ?)',
+    de: 'Anfrage vom Server abgelehnt (Nachricht zu lang?)',
+    es: 'solicitud rechazada por el servidor (¿mensaje demasiado largo?)',
+  },
   [ERROR_KINDS.RATE_LIMITED]: {
     en: 'too many requests: the homeserver asks to slow down',
     fr: 'trop de requêtes : le serveur demande de ralentir',

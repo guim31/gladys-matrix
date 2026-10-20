@@ -249,8 +249,17 @@ long, et sur un « Sie »/« Ihr… » de politesse en allemand. Le store exige 
   que contre le faux Gladys du SDK (qui accepte tout code et ne renvoie jamais 404 sur `publishMessage` :
   les tests le simulent par `t.mock.method`).
 - **Deux sortes de salons** : ceux de la configuration (« surveillés ») ne servent qu'aux déclencheurs ;
-  tout autre salon où une personne autorisée a invité le robot est une conversation privée avec Gladys.
-  Ainsi le cerveau ne répond jamais dans un salon familial.
+  un salon dont les membres (rejoints ou invités, `GET /rooms/{id}/members`, cache d'une minute) sont
+  exactement le robot et une personne autorisée est une conversation privée avec Gladys ; tout autre salon
+  est ignoré. Ainsi le cerveau ne répond jamais dans un salon familial (relecture : faille réelle avant ce
+  contrôle). Le même contrôle détecte qu'une personne a quitté son salon privé : écrire dans un salon
+  qu'elle a quitté réussit (200), aucune erreur ne le signale.
+- `applyConfig` est sérialisé (chaîne de promesses) : deux enregistrements rapprochés lançaient deux
+  boucles de sync. Toutes les requêtes de `connect()` reçoivent le signal d'arrêt.
+- `connection_restored` ne part qu'après un `connection_lost` effectivement émis (`lostFired`).
+- `onSendMessage` tient dans un seul délai de 4,5 s (`AbortSignal.timeout`), dont au plus 2 s d'attente de la
+  première connexion (message « Gladys mise à jour » reçu au démarrage).
+- Un 4xx inconnu est `rejected` (pas `forbidden`) : seul M_FORBIDDEN fait ouvrir un nouveau salon.
 - Le code de liaison de Gladys : 8 caractères de `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, insensible à la casse
   (`createLinkCode.js`, `linkContact.js` du cœur). Un mot qui y ressemble et donne 404 part au cerveau.
 - `contact.id` = l'identifiant Matrix (`@alice:server`). Le salon de réponse est le dernier salon privé où

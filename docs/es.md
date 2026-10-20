@@ -55,7 +55,7 @@ Cada usuario de Gladys que quiera hablar con Gladys desde Matrix lo hace una vez
 
 ## Lo que hace el bot
 
-- **En una sala privada** (cualquier sala con el bot que no sea una sala vigilada): transmite sus mensajes
+- **En una sala privada** (una sala solo con usted y el bot, que no sea una sala vigilada; en una sala de grupo no vigilada, el bot no dice nada): transmite sus mensajes
   a Gladys, con la autoridad del usuario de Gladys vinculado, igual que el bot de Telegram: «¿Qué
   temperatura hace en el salón?», «Apaga las luces». Las respuestas de Gladys vuelven a esa sala. Los
   mensajes que Gladys le envía (la acción de escena **Enviar mensaje**, los mensajes del sistema) también

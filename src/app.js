@@ -50,7 +50,10 @@ export const CREDENTIALS_RETRY_MS = 5 * 60 * 1000;
 export const SYNC_TIMEOUT_MS = 30_000;
 export const RECENT_KEPT = 5;
 // Gladys waits 5 s for the ack of a message: answer before, even if the homeserver is slow.
-export const MESSAGE_TIMEOUT_MS = 4000;
+export const MESSAGE_TIMEOUT_MS = 4500;
+// How long a message of Gladys waits for the first connection, within that deadline.
+export const CONNECT_WAIT_MS = 2000;
+export const MEMBERS_CACHE_MS = 60 * 1000;
 // Gladys link codes: 8 characters of an alphabet without 0/O/1/I/L.
 const LINK_CODE = /^[A-HJ-KM-NP-Z2-9]{8}$/i;
 const MAX_TEXT_LENGTH = 4096; // the limit of publishMessage
@@ -111,7 +114,11 @@ export function registerHandlers(gladys, options = {}) {
   let running = null; // the running loop
   let stopped = false;
   let lastStatus = null;
+  let lostFired = false; // connection_lost was fired: connection_restored may follow
+  let applying = Promise.resolve(); // configurations are applied one at a time
+  let readyWaiters = []; // onSendMessage calls waiting for the first connection
   const aliasCache = new Map();
+  const membersCache = new Map(); // room id → { at, members }
   const statusLog = createFailureLog(logger, { recovered: 'Connection status published again' });
   const syncLog = createFailureLog(logger, { recovered: 'Matrix sync works again' });
   const brainLog = createFailureLog(logger, { recovered: 'Messages reach Gladys again' });
@@ -176,6 +183,7 @@ export function registerHandlers(gladys, options = {}) {
       client.accessToken = config.access_token;
       ({ user_id: userId } = await client.whoami({ signal }));
     } else {
+      data.deviceId ??= data.session?.device_id;
       let identified = false;
       if (data.session?.access_token) {
         client.accessToken = data.session.access_token;
@@ -190,20 +198,20 @@ export function registerHandlers(gladys, options = {}) {
         }
       }
       if (!identified) {
-        const session = await client.login(
-          config.bot_user,
-          config.password,
-          data.session?.device_id,
-        );
+        // The same device id at each login: the account does not pile up devices.
+        const session = await client.login(config.bot_user, config.password, data.deviceId, {
+          signal,
+        });
         userId = session.user_id;
+        data.deviceId = session.device_id;
         data.session = { access_token: session.access_token, device_id: session.device_id };
         await save();
       }
     }
-    await joinWatchedRooms();
+    await joinWatchedRooms(signal);
   }
 
-  async function resolveRoom(entry) {
+  async function resolveRoom(entry, signal) {
     if (isRoomId(entry)) {
       return entry;
     }
@@ -211,30 +219,30 @@ export function registerHandlers(gladys, options = {}) {
       throw new MatrixError(ERROR_KINDS.NOT_FOUND, `Not a room id nor an alias: ${entry}`);
     }
     if (!aliasCache.has(entry)) {
-      aliasCache.set(entry, await client.resolveAlias(entry));
+      aliasCache.set(entry, await client.resolveAlias(entry, { signal }));
     }
     return aliasCache.get(entry);
   }
 
-  async function joinWatchedRooms() {
+  async function joinWatchedRooms(signal) {
     const entries = new Map();
     const failures = [];
     let joined = [];
     try {
-      joined = await client.joinedRooms();
+      joined = await client.joinedRooms({ signal });
     } catch (err) {
       logger.debug(`Joined rooms not listed: ${err.message}`);
     }
     for (const entry of config.rooms) {
       try {
-        const roomId = await resolveRoom(entry);
+        const roomId = await resolveRoom(entry, signal);
         if (!joined.includes(roomId)) {
-          await client.join(roomId);
+          await client.join(entry, { signal }); // by alias when there is one: the server finds the room
           logger.info(`Joined the watched room ${entry}`);
         }
         entries.set(roomId, entry);
       } catch (err) {
-        if (TRANSIENT_KINDS.has(err.kind)) {
+        if (signal.aborted || TRANSIENT_KINDS.has(err.kind)) {
           throw err;
         }
         failures.push(entry);
@@ -251,14 +259,29 @@ export function registerHandlers(gladys, options = {}) {
       : undefined;
 
   async function markConnected() {
-    const wasLost = connection === CONNECTION.DISCONNECTED;
     lastError = null;
     setConnection(CONNECTION.CONNECTED);
+    readyWaiters.splice(0).forEach((wake) => wake());
     await publishStatus(true, roomsStatus());
-    if (wasLost) {
+    if (lostFired) {
+      lostFired = false;
       logger.info('Matrix connection restored');
       await fire(TRIGGERS.RESTORED, { user: userId ?? '' });
     }
+  }
+
+  /** Resolves once the bot is connected, or after `ms` at most. */
+  function whenConnected(ms) {
+    if (userId && connection === CONNECTION.CONNECTED) {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      const timer = setTimeout(resolve, ms);
+      readyWaiters.push(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
   }
 
   // --- The sync loop -------------------------------------------------------------
@@ -275,6 +298,8 @@ export function registerHandlers(gladys, options = {}) {
           }
           await connect(signal);
           connected = true;
+          failingSince = null;
+          attempt = 0;
           logger.info(`Connected to Matrix as ${userId}`);
           await markConnected();
         }
@@ -294,6 +319,8 @@ export function registerHandlers(gladys, options = {}) {
         if (parsed.nextBatch) {
           data.since = parsed.nextBatch;
           save();
+        } else {
+          await sleep(RETRY_DELAYS_MS[0], signal); // a broken answer: never a busy loop
         }
         attempt = 0;
         syncLog.ok();
@@ -312,7 +339,7 @@ export function registerHandlers(gladys, options = {}) {
         let delay = RETRY_DELAYS_MS[Math.min(attempt, RETRY_DELAYS_MS.length - 1)];
         attempt += 1;
         if (error.kind === ERROR_KINDS.TOKEN && !config.access_token && data.session) {
-          // The stored session was revoked: log in again at once.
+          // The stored session was revoked: log in again at once (same device id).
           delete data.session;
           connected = false;
           delay = 0;
@@ -337,6 +364,7 @@ export function registerHandlers(gladys, options = {}) {
             setConnection(CONNECTION.DISCONNECTED);
             logger.warn(`Matrix connection lost: ${error.message}`);
             if (wasConnected) {
+              lostFired = true;
               await fire(TRIGGERS.LOST, { error: errorText(error, config.language) });
             }
           }
@@ -380,27 +408,56 @@ export function registerHandlers(gladys, options = {}) {
       await reply(event.roomId, pick(BOT_TEXT, config.language).encrypted);
     }
     for (const message of parsed.messages) {
-      if (!config.allowed_users.includes(message.sender)) {
-        logger.debug(`Message from ${message.sender} ignored: not an allowed person`);
-        continue;
-      }
-      if (message.edit || message.msgtype !== 'm.text') {
-        continue; // edits would run a command twice; notices are what bots write
-      }
-      if (message.ts < oldest) {
-        logger.debug(`Message of ${new Date(message.ts).toISOString()} skipped: too old`);
-        continue;
-      }
-      const text = stripReplyFallback(message.body);
-      if (text === '') {
-        continue;
-      }
-      if (roomEntries.has(message.roomId)) {
-        await handleRoomMessage(message, text);
-      } else {
-        await handleConversation(message, text);
+      // One event never blocks the others, nor the sync position (it would be replayed forever).
+      try {
+        await handleMessage(message, oldest);
+      } catch (err) {
+        logger.warn(`Message ${message.eventId} not handled: ${err.message}`);
       }
     }
+  }
+
+  async function handleMessage(message, oldest) {
+    if (!config.allowed_users.includes(message.sender)) {
+      logger.debug(`Message from ${message.sender} ignored: not an allowed person`);
+      return;
+    }
+    if (message.edit || message.msgtype !== 'm.text') {
+      return; // edits would run a command twice; notices are what bots write
+    }
+    if (message.ts < oldest) {
+      logger.debug(`Message ${message.eventId} skipped: too old`);
+      return;
+    }
+    const text = stripReplyFallback(message.body);
+    if (text === '') {
+      return;
+    }
+    if (roomEntries.has(message.roomId)) {
+      await handleRoomMessage(message, text);
+    } else if (await isPrivateWith(message.roomId, message.sender)) {
+      await handleConversation(message, text);
+    } else {
+      // A group room that is not watched: Gladys never answers where others can read.
+      logger.debug(`Message in ${message.roomId} ignored: neither watched nor private`);
+    }
+  }
+
+  /** The members (joined or invited) of a room, cached for a minute. */
+  async function roomMembers(roomId, signal) {
+    const cached = membersCache.get(roomId);
+    if (cached && now() - cached.at < MEMBERS_CACHE_MS) {
+      return cached.members;
+    }
+    const members = (await client.members(roomId, { signal })).map((member) => member.userId);
+    membersCache.set(roomId, { at: now(), members });
+    return members;
+  }
+
+  /** True when the room holds the bot and this person only. */
+  async function isPrivateWith(roomId, person, signal) {
+    const members = await roomMembers(roomId, signal);
+    return members.length === 2 && members.includes(person) && members.includes(userId);
   }
 
   async function handleRoomMessage(message, text) {
@@ -424,7 +481,7 @@ export function registerHandlers(gladys, options = {}) {
     if (command) {
       await fire(TRIGGERS.COMMAND, {
         ...common,
-        command: command.command,
+        command: command.command.slice(0, 1000),
         arguments: command.args.slice(0, 1000),
       });
     }
@@ -481,12 +538,18 @@ export function registerHandlers(gladys, options = {}) {
 
   async function stopLoop() {
     controller?.abort();
-    controller = null;
     await running;
+    controller = null;
     running = null;
   }
 
-  async function applyConfig(raw) {
+  function applyConfig(raw) {
+    // Serialized: two saves in a row must never leave two sync loops running.
+    applying = applying.then(() => doApplyConfig(raw));
+    return applying;
+  }
+
+  async function doApplyConfig(raw) {
     await loaded;
     await stopLoop();
     config = normalizeConfig(raw);
@@ -496,6 +559,8 @@ export function registerHandlers(gladys, options = {}) {
     roomEntries = new Map();
     roomFailures = [];
     aliasCache.clear();
+    membersCache.clear();
+    lostFired = false;
     const homeserver = parseHomeserver(config.homeserver_url);
     const hasCredentials =
       config.access_token !== '' || (config.bot_user !== '' && config.password !== '');
@@ -543,7 +608,7 @@ export function registerHandlers(gladys, options = {}) {
       if (err.kind !== ERROR_KINDS.FORBIDDEN) {
         throw err;
       }
-      await matrix.join(roomId); // invited, or a public room: fails otherwise
+      await matrix.join(entry); // invited, or a public room: fails otherwise
       return { roomId, eventId: await matrix.sendMessage(roomId, content) };
     }
   }
@@ -566,13 +631,25 @@ export function registerHandlers(gladys, options = {}) {
     }
   }
 
-  async function roomForContact(contactId) {
+  /** The private room of a person: the known one while they are still in it, or a new one. */
+  async function roomForContact(contactId, signal) {
+    const matrix = requireConnected();
     const known = data.contactRooms?.[contactId];
     if (known) {
-      return known;
+      try {
+        if (await isPrivateWith(known, contactId, signal)) {
+          return known;
+        }
+        logger.info(`${contactId} left their private room: opening a new one`);
+      } catch (err) {
+        if (err.kind !== ERROR_KINDS.FORBIDDEN && err.kind !== ERROR_KINDS.NOT_FOUND) {
+          throw err;
+        }
+      }
     }
-    const roomId = await requireConnected().createDirectRoom(contactId, 'Gladys');
+    const roomId = await matrix.createDirectRoom(contactId, 'Gladys', { signal });
     logger.info(`Opened a private room with ${contactId}`);
+    membersCache.set(roomId, { at: now(), members: [userId, contactId] });
     data.contactRooms = { ...data.contactRooms, [contactId]: roomId };
     save();
     return roomId;
@@ -598,7 +675,11 @@ export function registerHandlers(gladys, options = {}) {
   // --- Handlers ------------------------------------------------------------------
 
   gladys.onSendMessage(async (contact, message) => {
+    // Gladys gives up after 5 s: everything below holds in one deadline.
+    const deadline = AbortSignal.timeout(MESSAGE_TIMEOUT_MS);
     const contactId = typeof contact?.id === 'string' ? contact.id : '';
+    // Right after a start (the "Gladys updated" message), the bot may still be logging in.
+    await whenConnected(CONNECT_WAIT_MS);
     if (!config.allowed_users.includes(contactId)) {
       // Linked once, then removed from the allowed people: nothing goes out to them.
       logger.debug(
@@ -609,26 +690,19 @@ export function registerHandlers(gladys, options = {}) {
     const text = typeof message?.text === 'string' ? message.text : '';
     try {
       const matrix = requireConnected();
-      let roomId = await roomForContact(contactId);
+      const roomId = await roomForContact(contactId, deadline);
       if (text.trim() !== '') {
-        try {
-          await withTimeout(matrix.sendMessage(roomId, textContent(text)), MESSAGE_TIMEOUT_MS);
-        } catch (err) {
-          if (err.kind !== ERROR_KINDS.FORBIDDEN) {
-            throw err;
-          }
-          // The person left that room: open a new one.
-          delete data.contactRooms[contactId];
-          roomId = await roomForContact(contactId);
-          await withTimeout(matrix.sendMessage(roomId, textContent(text)), MESSAGE_TIMEOUT_MS);
-        }
+        await matrix.sendMessage(roomId, textContent(text), { signal: deadline });
       }
       if (message?.file) {
         sendImage(roomId, message.file); // after the ack: an upload takes longer than 5 s
       }
     } catch (err) {
-      logger.warn(`Message not delivered to ${contactId}: ${err.message}`);
-      throw new Error(`Matrix: ${errorText(err, 'en')}`, { cause: err });
+      const failure = deadline.aborted
+        ? new MatrixError(ERROR_KINDS.TIMEOUT, `No answer within ${MESSAGE_TIMEOUT_MS} ms`)
+        : err;
+      logger.warn(`Message not delivered to ${contactId}: ${failure.message}`);
+      throw new Error(`Matrix: ${errorText(failure, 'en')}`, { cause: err });
     }
   });
 
@@ -699,17 +773,4 @@ export function registerHandlers(gladys, options = {}) {
       await store.flush();
     },
   };
-}
-
-function withTimeout(promise, ms) {
-  let timer;
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => {
-      timer = setTimeout(
-        () => reject(new MatrixError(ERROR_KINDS.TIMEOUT, `No answer within ${ms} ms`)),
-        ms,
-      );
-    }),
-  ]).finally(() => clearTimeout(timer));
 }

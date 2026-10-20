@@ -58,7 +58,7 @@ Jeder Gladys-Benutzer, der über Matrix mit Gladys sprechen will, macht das einm
 
 ## Was der Bot macht
 
-- **In einem privaten Raum** (jeder Raum mit dem Bot, der kein beobachteter Raum ist): Er gibt deine
+- **In einem privaten Raum** (ein Raum nur mit dir und dem Bot, kein beobachteter Raum; in einem nicht beobachteten Gruppenraum schweigt der Bot): Er gibt deine
   Nachrichten an Gladys weiter, mit den Rechten des verknüpften Gladys-Benutzers, genau wie der
   Telegram-Bot: „Wie warm ist es im Wohnzimmer?“, „Schalte das Licht aus“. Die Antworten von Gladys kommen
   in diesem Raum zurück. Die Nachrichten, die Gladys dir schickt (die Szenenaktion **Nachricht senden**, die

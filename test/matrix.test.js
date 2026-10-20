@@ -141,7 +141,10 @@ test('client: paths are encoded, the sync asks for a long poll only with a posit
     calls[0].url,
     'https://matrix.test/_matrix/client/v3/directory/room/%23maison%3Amatrix.test',
   );
-  assert.equal(calls[1].url, 'https://matrix.test/_matrix/client/v3/join/!q7FH%3Amatrix.test');
+  assert.equal(
+    calls[1].url,
+    'https://matrix.test/_matrix/client/v3/join/!q7FH%3Amatrix.test?server_name=matrix.test&via=matrix.test',
+  );
   assert.match(calls[2].url, /\/sync\?timeout=0&filter=%7B%7D&set_presence=offline$/);
   assert.match(calls[3].url, /\/sync\?since=s1&timeout=30000&set_presence=offline$/);
 });

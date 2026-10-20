@@ -22,6 +22,7 @@ export const ERROR_KINDS = {
   TOKEN: 'token',
   FORBIDDEN: 'forbidden',
   NOT_FOUND: 'not_found',
+  REJECTED: 'rejected',
   RATE_LIMITED: 'rate_limited',
   SERVER: 'server',
 };
@@ -73,10 +74,18 @@ function kindOf(status, errcode) {
   if (errcode === 'M_FORBIDDEN' || status === 403) {
     return ERROR_KINDS.FORBIDDEN;
   }
-  return status >= 500 ? ERROR_KINDS.SERVER : ERROR_KINDS.FORBIDDEN;
+  // Any other 4xx (a message too large, a malformed request): refused as is.
+  return status >= 500 ? ERROR_KINDS.SERVER : ERROR_KINDS.REJECTED;
 }
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms, signal) =>
+  new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
 
 export class MatrixClient {
   /**
@@ -94,8 +103,10 @@ export class MatrixClient {
   url(prefix, path, query) {
     const url = new URL(this.base.href.replace(/\/$/, '') + prefix + path);
     for (const [key, value] of Object.entries(query ?? {})) {
-      if (value !== undefined && value !== null) {
-        url.searchParams.set(key, String(value));
+      for (const item of Array.isArray(value) ? value : [value]) {
+        if (item !== undefined && item !== null) {
+          url.searchParams.append(key, String(item));
+        }
       }
     }
     return url;
@@ -135,10 +146,6 @@ export class MatrixClient {
       headers['content-type'] = 'application/json';
       payload = JSON.stringify(body);
     }
-    const signals = [AbortSignal.timeout(timeoutMs)];
-    if (signal) {
-      signals.push(signal);
-    }
     for (let attempt = 0; ; attempt += 1) {
       let response;
       try {
@@ -146,7 +153,10 @@ export class MatrixClient {
           method,
           headers,
           body: payload,
-          signal: AbortSignal.any(signals),
+          // A fresh timeout per attempt: the wait of a 429 does not eat the next one.
+          signal: signal
+            ? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal])
+            : AbortSignal.timeout(timeoutMs),
         });
       } catch (err) {
         if (signal?.aborted) {
@@ -190,7 +200,10 @@ export class MatrixClient {
       if (kind === ERROR_KINDS.RATE_LIMITED && attempt === 0) {
         const wait = Number.isFinite(retryAfterMs) && retryAfterMs > 0 ? retryAfterMs : 1000;
         if (wait <= MAX_INLINE_RETRY_MS) {
-          await sleep(wait);
+          await sleep(wait, signal);
+          if (signal?.aborted) {
+            throw signal.reason;
+          }
           continue;
         }
       }
@@ -217,10 +230,11 @@ export class MatrixClient {
    * Password login. Resolves with `{ user_id, access_token, device_id }` and
    * keeps the token for the next calls.
    */
-  async login(user, password, deviceId) {
+  async login(user, password, deviceId, { signal } = {}) {
     try {
       const data = await this.request('POST', '/login', {
         auth: false,
+        signal,
         body: {
           type: 'm.login.password',
           identifier: { type: 'm.id.user', user },
@@ -257,32 +271,53 @@ export class MatrixClient {
     });
   }
 
-  /** Joins a room by id or alias (an invitation, or a public room). Resolves with its id. */
-  async join(roomIdOrAlias) {
+  /**
+   * Joins a room by id or alias (an invitation, or a public room). Resolves
+   * with its id. A room id of another server tells which server to ask
+   * (server_name, and `via` since Matrix 1.12).
+   */
+  async join(roomIdOrAlias, { signal } = {}) {
+    const server = roomIdOrAlias.startsWith('!') ? roomIdOrAlias.split(':').slice(1).join(':') : '';
     const data = await this.request('POST', `/join/${encodeURIComponent(roomIdOrAlias)}`, {
       body: {},
+      query: server ? { server_name: server, via: server } : undefined,
+      signal,
     });
     return data.room_id;
   }
 
   /** The id of a room alias (#name:server). */
-  async resolveAlias(alias) {
-    const data = await this.request('GET', `/directory/room/${encodeURIComponent(alias)}`);
+  async resolveAlias(alias, { signal } = {}) {
+    const data = await this.request('GET', `/directory/room/${encodeURIComponent(alias)}`, {
+      signal,
+    });
     return data.room_id;
   }
 
   /** The rooms the bot is in. */
-  async joinedRooms() {
-    const data = await this.request('GET', '/joined_rooms');
+  async joinedRooms({ signal } = {}) {
+    const data = await this.request('GET', '/joined_rooms', { signal });
     return Array.isArray(data.joined_rooms) ? data.joined_rooms : [];
   }
 
+  /** The members of a room who joined or are invited (not those who left). */
+  async members(roomId, { signal } = {}) {
+    const data = await this.request('GET', `/rooms/${encodeURIComponent(roomId)}/members`, {
+      query: { not_membership: 'leave' },
+      signal,
+    });
+    const chunk = Array.isArray(data.chunk) ? data.chunk : [];
+    return chunk
+      .filter((event) => ['join', 'invite'].includes(event?.content?.membership))
+      .map((event) => ({ userId: event.state_key, membership: event.content.membership }));
+  }
+
   /** Sends one m.room.message. Resolves with the event id. */
-  async sendMessage(roomId, content, txnId = randomUUID()) {
+  async sendMessage(roomId, content, { txnId = randomUUID(), signal } = {}) {
     const data = await this.request(
       'PUT',
       `/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${encodeURIComponent(txnId)}`,
-      { body: content },
+      { body: content, signal },
     );
     return data.event_id;
   }
@@ -291,8 +326,9 @@ export class MatrixClient {
    * Opens a direct, UNENCRYPTED room with one user (the bot cannot read an
    * encrypted one). Resolves with its id.
    */
-  async createDirectRoom(userId, name) {
+  async createDirectRoom(userId, name, { signal } = {}) {
     const data = await this.request('POST', '/createRoom', {
+      signal,
       body: {
         preset: 'trusted_private_chat',
         is_direct: true,

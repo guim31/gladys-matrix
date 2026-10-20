@@ -50,6 +50,12 @@ export function createFakeHomeserver() {
     batch: 0,
     waiters: [],
     forbidSend: new Set(),
+    rejectSend: false, // a 413, as for a message too large
+    // Joined or invited members of each room; the bot alone in an unknown room.
+    members: new Map([
+      [ROOM, [BOT, ALICE]],
+      [PRIVATE_ROOM, [BOT, ALICE]],
+    ]),
     syncError: null, // { status, body } answered once by the next sync
   };
 
@@ -64,6 +70,9 @@ export function createFakeHomeserver() {
     const method = init.method ?? 'GET';
     const path = decodeURIComponent(pathname.replace(/^\/_matrix\/(client|media)\/v3/, ''));
     server.requests.push({ method, path, since: searchParams.get('since') });
+    if (init.signal?.aborted) {
+      throw init.signal.reason; // like fetch: an aborted request never starts
+    }
     if (server.down) {
       throw new TypeError('fetch failed', { cause: { code: server.down } });
     }
@@ -103,11 +112,25 @@ export function createFakeHomeserver() {
       server.joined.add(roomId);
       return json(200, { room_id: roomId });
     }
+    const members = path.match(/^\/rooms\/([^/]+)\/members$/);
+    if (members) {
+      const list = server.members.get(members[1]) ?? [BOT];
+      return json(200, {
+        chunk: list.map((user) => ({
+          type: 'm.room.member',
+          state_key: user,
+          content: { membership: 'join' },
+        })),
+      });
+    }
     const send = path.match(/^\/rooms\/([^/]+)\/send\/m\.room\.message\/(.+)$/);
     if (method === 'PUT' && send) {
       const roomId = send[1];
       if (!server.joined.has(roomId) || server.forbidSend.has(roomId)) {
         return json(403, fixture('send-notjoined'));
+      }
+      if (server.rejectSend) {
+        return json(413, { errcode: 'M_TOO_LARGE', error: 'Event too large' });
       }
       server.sent.push({ roomId, content: body });
       return json(200, { event_id: `$event-${server.sent.length}` });
@@ -116,6 +139,7 @@ export function createFakeHomeserver() {
       server.created.push(body);
       const roomId = `!created-${server.created.length}:matrix.test`;
       server.joined.add(roomId);
+      server.members.set(roomId, [BOT, ...(body.invite ?? [])]);
       return json(200, { room_id: roomId });
     }
     if (method === 'POST' && path === '/upload') {

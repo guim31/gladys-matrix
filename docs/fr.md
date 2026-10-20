@@ -59,7 +59,7 @@ Chaque utilisateur de Gladys qui veut parler à Gladys depuis Matrix le fait une
 
 ## Ce que fait le robot
 
-- **Dans un salon privé** (tout salon où se trouve le robot et qui n'est pas un salon surveillé) : il
+- **Dans un salon privé** (un salon avec seulement vous et le robot, qui n'est pas un salon surveillé ; dans un salon de groupe non surveillé, le robot se tait) : il
   transmet vos messages à Gladys, avec l'autorité de l'utilisateur Gladys lié, exactement comme le robot
   Telegram : « Quelle température fait-il au salon ? », « Éteins les lumières ». Les réponses de Gladys
   reviennent dans ce salon. Les messages que Gladys vous envoie (l'action de scène **Envoyer un message**,

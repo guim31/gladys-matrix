@@ -56,7 +56,7 @@ Each Gladys user who wants to talk to Gladys from Matrix does it once:
 
 ## What the bot does
 
-- **In a private room** (any room the bot is in that is not a watched room): it passes your messages to
+- **In a private room** (a room with only you and the bot, not a watched room; in a group room that is not watched, the bot stays silent): it passes your messages to
   Gladys, with the authority of the linked Gladys user, exactly like the Telegram bot: "What is the
   temperature in the living room?", "Turn off the lights". The answers of Gladys come back in this room.
   The messages Gladys sends to you (the **Send Message** scene action, the system messages) arrive
