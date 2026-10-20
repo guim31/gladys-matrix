@@ -1,67 +1,157 @@
-# Template de démonstration
+# Matrix
 
-Ceci est la documentation utilisateur de l'intégration. Gladys ré-héberge ce
-fichier et affiche un lien **Documentation** permanent vers lui dans l'écran
-de configuration (dans la langue de l'utilisateur, avec l'anglais en repli) —
-c'est au moment de configurer que l'utilisateur en a le plus besoin. Gardez
-les courtes indications d'accueil dans les blocs `section` du `config_schema`
-du manifest ; mettez ici le pas-à-pas détaillé (captures d'écran, dépannage…).
+Parlez à Gladys depuis [Matrix](https://matrix.org), la messagerie ouverte et décentralisée (Element,
+FluffyChat, Cinny…), comme avec le robot Telegram de Gladys : posez une question, lancez une scène,
+recevez les messages de Gladys. L'intégration écrit aussi dans des salons Matrix depuis vos scènes, et
+lance des scènes quand un message ou une commande comme `!lumieres off` est écrit dans un salon qu'elle
+surveille. Elle utilise un compte robot dédié, sur votre propre serveur (Synapse, Conduit, conduwuit,
+Dendrite…) ou sur un serveur public comme matrix.org.
 
-## Ce que vous obtenez
+> **Développée sans le matériel : vos retours sont les bienvenus.** L'intégration a été testée contre un
+> vrai serveur Conduit 0.10, mais pas dans un vrai Gladys ni avec tous les clients Matrix. Dites ce qui
+> marche et ce qui ne marche pas dans les [issues](https://github.com/guim31/gladys-matrix/issues) ou sur
+> le [forum Gladys](https://community.gladysassistant.com).
 
-Six appareils de démonstration apparaissent après l'installation : une
-station météo (vraies données Open-Meteo), un interrupteur, une lampe
-variable, une prise connectée avec mesure de puissance, un détecteur de
-mouvement et une caméra.
+## Ce qu'il vous faut
 
-## Configuration
+- Gladys Assistant **5.1.0** ou plus récent.
+- Un **compte Matrix dédié au robot** (par exemple `@gladys:example.org`), sur un serveur que Gladys peut
+  joindre : votre serveur sur le réseau local, ou un serveur public sur Internet. N'utilisez pas votre
+  compte personnel : le robot répond en son nom.
+- **Des salons sans chiffrement de bout en bout.** Le robot ne lit pas les salons chiffrés (Element chiffre
+  par défaut les salons privés et les messages directs : désactivez l'option à la création du salon, elle
+  ne se change plus ensuite).
+- L'adresse Matrix de chaque personne autorisée à parler au robot, comme `@alice:example.org`.
 
-1. Ouvrez l'onglet **Configuration** de l'intégration.
-2. Renseignez la **latitude** et la **longitude** que la station météo de
-   démonstration doit observer (Paris par défaut), et choisissez votre unité
-   de température. L'**intervalle de rafraîchissement** règle la fréquence
-   de lecture de la station météo et de la puissance de la prise : toutes
-   les 5 minutes par défaut, toutes les minutes au plus.
-3. Enregistrez : les appareils apparaissent dans l'onglet **Découverte**,
-   prêts à être ajoutés.
+## Mise en place
 
-Le réglage **Préférer la connexion locale** pilote la prise de
-démonstration : elle affiche en badge le canal réellement utilisé (local ou
-cloud), avec un point orange quand elle fonctionne en mode dégradé (local
-refusé, bascule cloud).
+1. Créez le compte du robot (sur matrix.org : une inscription ordinaire ; sur votre serveur : comme les
+   autres comptes).
+2. Dans Gladys, **Intégrations → Matrix → Configuration** :
+   - **Adresse du serveur Matrix** : l'API client du serveur, par exemple `https://matrix.org` ou
+     `http://192.168.1.20:8008`. Pour un serveur derrière son nom de domaine, c'est souvent `https://matrix.`
+     suivi du domaine.
+   - **Identifiant du robot** et **Mot de passe du robot** : le robot se connecte une fois et garde son jeton
+     d'accès dans les données de l'intégration. Ou remplissez **Jeton d'accès (au lieu du mot de passe)**
+     avec un jeton du compte du robot : l'identifiant et le mot de passe ne servent alors pas.
+   - **Personnes autorisées** : les adresses Matrix que le robot écoute, séparées par des virgules. **Vide,
+     le robot ne répond à personne** : il ignore les messages et les invitations de tous ceux qui ne sont
+     pas dans cette liste.
+   - **Salons surveillés** : les salons dont les messages lancent des scènes, par alias
+     (`#maison:example.org`) ou par identifiant (`!abc…:example.org`, dans les paramètres du salon,
+     « Avancé »), séparés par des virgules. Invitez d'abord le robot dans un salon privé : il rejoint seul
+     les salons de cette liste.
+   - **Préfixe des commandes** : `!` par défaut.
+   - **Langue du robot** : la langue de ce que le robot écrit avant qu'une personne soit liée.
+3. Cliquez sur **Tester la connexion** : le compte rendu donne le compte du robot, les salons surveillés
+   rejoints et le nombre de personnes autorisées. L'état de connexion de la page le dit aussi.
 
-## Actions
+### Lier votre compte Matrix pour parler à Gladys
 
-- **Tester le fournisseur météo** — effectue une requête en direct vers
-  Open-Meteo et affiche la température et l'humidité actuelles sous le
-  bouton.
-- **Identifier un appareil** — choisissez un de vos appareils dans la liste
-  et il se signale (la lampe de démonstration « clignote » dans les logs).
+Chaque utilisateur de Gladys qui veut parler à Gladys depuis Matrix le fait une fois :
 
-## Scènes
+1. Dans Matrix, créez un **salon privé sans chiffrement** et invitez-y le robot (personnes autorisées
+   seulement : le robot ignore les invitations des autres). Il le rejoint aussitôt.
+2. Dans Gladys, **Intégrations → Matrix → Configuration**, bloc « Lier mon compte » : cliquez sur
+   **Générer un code de liaison**.
+3. Envoyez le code (8 caractères) au robot dans ce salon. Le robot confirme : votre compte Matrix est lié à
+   votre utilisateur Gladys. Vous pouvez le délier depuis le même bloc.
 
-L'intégration ajoute ses propres cartes à l'éditeur de scènes (Gladys 5.1
-ou plus récent), dans la catégorie **Intégrations** :
+## Ce que fait le robot
 
-- **Mouvement détecté** (déclencheur) — lance la scène quand un détecteur
-  de démonstration voit bouger quelque chose. Choisissez éventuellement le
-  détecteur et ce qui a bougé (personne, animal) ; laissés vides, toute
-  détection correspond. Les actions suivantes peuvent lire ce qui a bougé
-  avec `{{triggerEvent.data.target}}`.
-- **Identifier un appareil** (action) — fait se signaler l'appareil choisi.
-  Elle indique si l'appareil a pu se signaler, pour que les actions
-  suivantes puissent en dépendre.
+- **Dans un salon privé** (un salon avec seulement vous et le robot, qui n'est pas un salon surveillé ; dans un salon de groupe non surveillé, le robot se tait) : il
+  transmet vos messages à Gladys, avec l'autorité de l'utilisateur Gladys lié, exactement comme le robot
+  Telegram : « Quelle température fait-il au salon ? », « Éteins les lumières ». Les réponses de Gladys
+  reviennent dans ce salon. Les messages que Gladys vous envoie (l'action de scène **Envoyer un message**,
+  les messages système) y arrivent aussi, Markdown rendu. Si Gladys écrit à une personne liée avant toute
+  conversation, le robot ouvre avec elle un salon privé non chiffré. Une image de caméra envoyée par une
+  scène arrive en image.
+- **Dans un salon surveillé** : chaque message d'une personne autorisée lance le déclencheur **Message
+  Matrix reçu**, et un message qui commence par le préfixe lance aussi **Commande Matrix reçue**. Le robot
+  n'y répond jamais de lui-même : la suite dépend de vos scènes.
+- **Ce qu'il ignore** : toute personne non autorisée, ses propres messages, les modifications d'un
+  message, les avis (ce qu'écrivent les autres robots), et les messages de plus de 5 minutes au moment où
+  il les lit (écrits pendant que Gladys ou le robot était arrêté : un « !ouvrir garage » d'il y a deux
+  heures ne s'exécute pas maintenant).
+- **Dans un salon chiffré** : il ne peut pas lire le message et le dit une fois dans ce salon.
 
 ## Tableau de bord
 
-Ajoutez le widget **État de la démo** à un tableau de bord : il affiche en
-direct la température de la station météo et la puissance de la prise du
-bureau, la connexion utilisée par la prise (en orange si dégradée) et la
-position observée. Son bouton **Identifier la lampe** fait se signaler la
-lampe de démonstration.
+Le widget **Matrix** montre si le robot est connecté, son compte, les salons surveillés où il se trouve,
+les 5 derniers messages reçus dans les salons surveillés (auteur, texte, date) et un bouton **Tester la
+connexion**. Les conversations privées avec Gladys n'y figurent jamais : tous ceux qui voient le tableau de
+bord voient le widget.
+
+## Scènes
+
+### Déclencheurs
+
+- **Message Matrix reçu** : une personne autorisée a écrit dans un salon surveillé. Filtres (vide =
+  n'importe lequel) : **Salon** (écrit comme dans la configuration, par exemple `#maison:example.org`) et
+  **Expéditeur** (`@alice:example.org`). Variables : Message, Expéditeur, Salon, Identifiant du salon.
+- **Commande Matrix reçue** : une personne autorisée a écrit une commande dans un salon surveillé : le
+  préfixe, puis un mot, puis d'éventuels arguments, par exemple `!lumieres off cuisine`. Filtre
+  **Commande** : le mot **sans le préfixe, en minuscules** (`lumieres`) ; et Salon, Expéditeur.
+  Variables : Commande (`lumieres`), Arguments (`off cuisine`), Message, Expéditeur, Salon, Identifiant du
+  salon. Le même message lance aussi **Message Matrix reçu**.
+- **Connexion Matrix perdue** : le robot ne joint plus le serveur Matrix, depuis une minute, ou ses
+  identifiants sont refusés. Variable : Erreur. Lancé une fois, jusqu'au retour de la connexion.
+- **Connexion Matrix rétablie** : le robot joint de nouveau le serveur après une perte de connexion.
+  Variable : Compte du robot.
+
+### Actions
+
+- **Envoyer un message Matrix** : écrit un message dans un salon, par alias ou identifiant. Le message
+  accepte les variables de scène et le Markdown (`**gras**`, `_italique_`, listes, liens). **Discret
+  (avis, sans alerte)** envoie un avis, que les clients Matrix affichent sans alerte. Le robot doit être
+  dans le salon, ou pouvoir y entrer (invité, ou salon public). Résultats : Envoyé (oui/non),
+  Identifiant de l'événement, Erreur. Un message raté n'arrête pas la scène : testez **Envoyé** par une
+  condition si besoin.
+
+Pour écrire à un utilisateur de Gladys plutôt qu'à un salon, utilisez l'action **Envoyer un message** de
+Gladys : elle atteint son compte Matrix lié.
+
+### Idées de scènes
+
+- **Garage par commande** : déclencheur **Commande Matrix reçue**, commande `garage`, salon
+  `#maison:example.org` ; puis une condition sur la variable Arguments égale à `fermer`, et l'action qui
+  ferme le garage.
+- **Sonnette dans le salon de la famille** : déclencheur sur la sonnette, puis **Envoyer un message
+  Matrix** dans `#maison:example.org` : « On a sonné à {{ heure }} », suivi de l'action du cœur qui envoie
+  l'image de la caméra à un utilisateur.
+- **Alerte quand le robot est coupé** : déclencheur **Connexion Matrix perdue**, puis une notification par
+  un autre canal (Gotify, ntfy, SMS) avec la variable Erreur.
 
 ## Dépannage
 
-L'intégration journalise tout ce qu'elle fait : consultez les logs de
-l'intégration depuis l'interface Gladys (ou `docker logs` sur l'hôte) avec
-`LOG_LEVEL=debug` pour le détail complet.
+- **« pas de serveur Matrix à cette adresse »** : l'adresse est celle de l'API client, pas la page du
+  client web Element. Ouvrez `https://<adresse>/_matrix/client/versions` dans un navigateur : il doit
+  répondre une liste de versions.
+- **« identifiant ou mot de passe du robot refusé »** : vérifiez-les en vous connectant avec le compte du
+  robot dans Element. Un compte protégé par authentification unique (SSO) seulement n'a pas de mot de
+  passe : utilisez un jeton d'accès.
+- **« jeton d'accès refusé »** : le jeton a été révoqué (déconnexion de cette session) ou a expiré.
+  Saisissez-en un nouveau, ou l'identifiant et le mot de passe.
+- **Un salon surveillé n'est pas rejoint** : l'état de la page et le test le nomment. Invitez le robot dans
+  le salon (ou rendez-le public), puis enregistrez de nouveau la configuration.
+- **Le robot ne me répond pas** : votre adresse Matrix est-elle dans **Personnes autorisées**, écrite
+  exactement (avec le `@` et le serveur) ? Le salon est-il sans chiffrement ? Dans un salon privé, votre
+  compte est-il lié (le robot vous donne alors la marche à suivre) ?
+- **Une commande ne lance pas la scène** : le filtre Commande est le mot sans le préfixe, en minuscules :
+  `lumieres`, pas `!Lumieres`.
+- Plus de détails dans les journaux de l'intégration avec `LOG_LEVEL=debug`.
+
+## Limites
+
+- **Pas de chiffrement de bout en bout** : le robot ne lit et n'écrit que dans des salons non chiffrés.
+  Ses messages voyagent chiffrés entre votre client, le serveur et Gladys (HTTPS), mais sont stockés
+  lisibles par le serveur Matrix.
+- Une personne liée à Gladys peut faire depuis Matrix tout ce que peut son utilisateur Gladys : gardez
+  la liste des personnes autorisées courte, et protégez le compte du robot (mot de passe solide, jamais
+  réutilisé).
+- Un compte robot par Gladys. Le robot lit les messages par une écoute longue de 30 secondes : une
+  commande prend effet en une seconde environ.
+- Les images, fichiers et messages vocaux envoyés au robot sont ignorés ; seul le texte compte.
+- Le compte du robot subit les limites de débit de son serveur : matrix.org ralentit les comptes qui
+  envoient beaucoup, gardez des scènes raisonnables.
+- Sans lien avec la Fondation Matrix.org. Matrix est une marque de The Matrix.org Foundation C.I.C.

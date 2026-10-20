@@ -1,0 +1,55 @@
+{
+  "next_batch": "261",
+  "rooms": {
+    "invite": {
+      "!q7FH-GaSOfZZAQYBWZShh_iYLJlZG_YLhHgfPIY0Pqk": {
+        "invite_state": {
+          "events": [
+            {
+              "content": {
+                "room_version": "12"
+              },
+              "sender": "@alice:matrix.test",
+              "state_key": "",
+              "type": "m.room.create"
+            },
+            {
+              "content": {
+                "name": "Maison"
+              },
+              "sender": "@alice:matrix.test",
+              "state_key": "",
+              "type": "m.room.name"
+            },
+            {
+              "content": {
+                "join_rule": "invite"
+              },
+              "sender": "@alice:matrix.test",
+              "state_key": "",
+              "type": "m.room.join_rules"
+            },
+            {
+              "content": {
+                "alias": "#maison:matrix.test"
+              },
+              "sender": "@alice:matrix.test",
+              "state_key": "",
+              "type": "m.room.canonical_alias"
+            },
+            {
+              "content": {
+                "displayname": "gladys ⚡️",
+                "is_direct": false,
+                "membership": "invite"
+              },
+              "sender": "@alice:matrix.test",
+              "state_key": "@gladys:matrix.test",
+              "type": "m.room.member"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

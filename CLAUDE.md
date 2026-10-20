@@ -32,15 +32,19 @@ pushing.
 
 ```
 index.js                          SDK wiring only: handlers registered before connect()
-src/devices/index.js              registry of the device blueprints + dispatch helpers
-src/devices/<type>.js             one device type per file (buildDevice, onPoll, onSetValue...)
-src/scenes.js                     scene action handlers (manifest `scene_actions`)
-src/widgets.js                    dashboard widget handlers (manifest `widgets`)
+src/app.js                        the integration: sync loop, linking, triggers, scene action,
+                                  onSendMessage, widget, test action
+src/matrix/client.js              client-server API v3 over fetch, typed errors (MatrixError.kind)
+src/matrix/sync.js                parsing of a /sync answer (invites, messages, encrypted events)
+src/matrix/format.js              Markdown → Matrix HTML, camera image parsing
 src/config.js                     DEFAULT_CONFIG (mirrors the manifest defaults) + normalization
-src/weather.js                    example driver (Open-Meteo)
-gladys-assistant-integration.json manifest: name, config_schema, actions, image...
-docs/en.md, docs/fr.md            user documentation, re-hosted by Gladys (mandatory)
-test/                             node --test, against the SDK's fake Gladys (integration-sdk/testing)
+src/texts.js                      four-language texts outside the widget (status, report, bot)
+src/widgets.js                    the "matrix" dashboard widget
+src/store.js, src/log.js          /data persistence (atomic writes), one-line repeated failures
+gladys-assistant-integration.json manifest: communication type, receive: true, triggers, action...
+docs/{en,fr,de,es}.md             user documentation, re-hosted by Gladys (mandatory)
+test/                             node --test, fake Gladys of the SDK + fake homeserver
+test/fixtures/matrix/             answers recorded from a real Conduit 0.10 (tokens replaced)
 .github/scripts/release.mjs       release helpers (manifest bump, changelog), tested in test/
 ```
 
@@ -70,8 +74,10 @@ test/                             node --test, against the SDK's fake Gladys (in
   `type: "provider"`: 5.1.0). `test/manifest.test.js` ties the manifest to the
   code (defaults, action, scene and widget handlers): change both sides
   together.
-- **User-facing text** is bilingual (English and French): action messages,
-  manifest texts, and `docs/en.md` / `docs/fr.md`, kept in sync.
+- **User-facing text** exists in English, French, German and Spanish: action
+  messages, manifest texts, what the bot writes, and `docs/en.md`,
+  `docs/fr.md`, `docs/de.md`, `docs/es.md`, kept in sync
+  (`test/i18n.test.js`).
 - **Style.** Prettier formats, ESLint catches mistakes. Comments explain why,
   in English. Tests never touch the network.
 
@@ -233,3 +239,40 @@ long, et sur un « Sie »/« Ihr… » de politesse en allemand. Le store exige 
 - Docs `en`, `fr`, `de`, `es` avec les mêmes sections.
 - Chauffe, ouverture, sécurité : ne rien rendre pilotable « comme un thermostat » ou par un assistant
   vocal quand une erreur serait dangereuse (leçon d'OctoPrint).
+
+## Matrix (cette intégration)
+
+- **Type `communication`, `messaging.receive: true`** (spec `capabilities/communication-type.md`, présent
+  dès la 5.1.0) : pas d'écran Appareils, donc pas d'appareil « Matrix » ; l'état de connexion passe par
+  `setConnectionStatus`, le widget et les déclencheurs `connection_lost` / `connection_restored`. C'est la
+  première intégration bidirectionnelle de guim31 : `linkContact` et `publishMessage` n'ont été vérifiés
+  que contre le faux Gladys du SDK (qui accepte tout code et ne renvoie jamais 404 sur `publishMessage` :
+  les tests le simulent par `t.mock.method`).
+- **Deux sortes de salons** : ceux de la configuration (« surveillés ») ne servent qu'aux déclencheurs ;
+  un salon dont les membres (rejoints ou invités, `GET /rooms/{id}/members`, cache d'une minute) sont
+  exactement le robot et une personne autorisée est une conversation privée avec Gladys ; tout autre salon
+  est ignoré. Ainsi le cerveau ne répond jamais dans un salon familial (relecture : faille réelle avant ce
+  contrôle). Le même contrôle détecte qu'une personne a quitté son salon privé : écrire dans un salon
+  qu'elle a quitté réussit (200), aucune erreur ne le signale.
+- `applyConfig` est sérialisé (chaîne de promesses) : deux enregistrements rapprochés lançaient deux
+  boucles de sync. Toutes les requêtes de `connect()` reçoivent le signal d'arrêt.
+- `connection_restored` ne part qu'après un `connection_lost` effectivement émis (`lostFired`).
+- `onSendMessage` tient dans un seul délai de 4,5 s (`AbortSignal.timeout`), dont au plus 2 s d'attente de la
+  première connexion (message « Gladys mise à jour » reçu au démarrage).
+- Un 4xx inconnu est `rejected` (pas `forbidden`) : seul M_FORBIDDEN fait ouvrir un nouveau salon.
+- Le code de liaison de Gladys : 8 caractères de `ABCDEFGHJKMNPQRSTUVWXYZ23456789`, insensible à la casse
+  (`createLinkCode.js`, `linkContact.js` du cœur). Un mot qui y ressemble et donne 404 part au cerveau.
+- `contact.id` = l'identifiant Matrix (`@alice:server`). Le salon de réponse est le dernier salon privé où
+  la personne a parlé (`/data`) ; à défaut, `createRoom` direct **sans** `m.room.encryption`.
+- `onSendMessage` est acquitté sous 5 s par le cœur : texte envoyé avec un délai de 4 s, l'image (upload)
+  part après l'acquittement.
+- **Conduit ignore une partie du filtre de sync** (événements de membre dans la timeline, état complet) :
+  l'analyse ne s'appuie jamais sur le filtre. Il fait du premier compte inscrit l'administrateur, avec un
+  salon d'annonces : le premier sync (sans `since`) est de l'historique, on n'y lit que les invitations.
+- Element chiffre par défaut les salons privés et les messages directs : le robot répond une fois par
+  salon chiffré, en clair, pour le dire.
+- Messages de plus de 5 min ignorés à la lecture (reprise après arrêt) ; `m.notice`, éditions
+  (`m.replace`) et messages du robot ignorés : pas de boucle entre une scène et ses déclencheurs.
+- Test réel : `matrixconduit/matrix-conduit` sur un réseau `gladys-test-matrix`, inscription par
+  `CONDUIT_REGISTRATION_TOKEN`, sans port publié (le bridge est joignable depuis l'hôte par l'IP du
+  conteneur).

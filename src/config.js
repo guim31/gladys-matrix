@@ -1,45 +1,85 @@
 // -----------------------------------------------------------------------------
-// Integration configuration.
-//
-// The configuration is filled in by the user in Gladys, from the `config_schema`
-// declared in `gladys-assistant-integration.json`. The SDK fetches it for you
-// (`gladys.getConfig()`) and notifies you of every change through
-// `gladys.onConfigUpdated()`.
-//
-// This module only provides defaults and normalizes the received object, so the
-// rest of the code never has to deal with `undefined`.
+// Integration configuration (the `config_schema` of the manifest), normalized
+// so the rest of the code never deals with `undefined`, stray spaces or a
+// half-typed address.
 // -----------------------------------------------------------------------------
 
+export const LANGUAGES = ['en', 'fr', 'de', 'es'];
+
 // Defaults: they MUST stay consistent with the `default` values declared in the
-// `config_schema` of the manifest.
+// `config_schema` of the manifest (test/manifest.test.js).
 export const DEFAULT_CONFIG = {
-  latitude: 48.8566, // Paris
-  longitude: 2.3522,
-  unit: 'celsius', // 'celsius' | 'fahrenheit'
-  // Seconds between two reads of the polled sensors. Gladys polls at most once
-  // a minute: slower intervals are applied by skipping polls (see
-  // createPoller in src/devices/index.js).
-  poll_frequency: 300,
-  // Reserved key (NOT in config_schema): because the manifest declares both
-  // 'local' and 'cloud' in its `transports` field, Gladys shows a standard
-  // "Prefer the local connection" toggle and sends the user's choice here.
-  // Read-only for the integration; defaults to true.
-  GLADYS_PREFER_LOCAL: true,
+  homeserver_url: '',
+  bot_user: '',
+  password: '',
+  access_token: '',
+  rooms: '',
+  allowed_users: '',
+  command_prefix: '!',
+  language: 'fr',
 };
+
+const trimmed = (value) => (typeof value === 'string' ? value.trim() : '');
+
+// A Matrix user id: @localpart:server (the server may carry a port).
+const USER_ID = /^@[^\s:@]+:[^\s]+$/;
+// A room: !opaque:server (or a bare !opaque since room version 12) or #alias:server.
+const ROOM_ID = /^![^\s]+$/;
+const ROOM_ALIAS = /^#[^\s:#]+:[^\s]+$/;
+
+export const isUserId = (value) => USER_ID.test(value);
+export const isRoomId = (value) => ROOM_ID.test(value);
+export const isRoomAlias = (value) => ROOM_ALIAS.test(value);
+
+/** Splits a list typed in a text field: commas, semicolons, spaces or new lines. */
+export function parseList(value) {
+  const items = trimmed(value)
+    .split(/[\s,;]+/)
+    .map((item) => item.trim())
+    .filter((item) => item !== '');
+  return [...new Set(items)];
+}
+
+/**
+ * The homeserver address as a URL, or null when it is empty or not understood.
+ * A bare host name gets https://, the only scheme a public homeserver speaks.
+ * @param {string} value
+ * @returns {URL|null}
+ */
+export function parseHomeserver(value) {
+  const text = trimmed(value).replace(/\/+$/, '');
+  if (text === '') {
+    return null;
+  }
+  try {
+    const url = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(text) ? text : `https://${text}`);
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {
+      return null;
+    }
+    url.search = '';
+    url.hash = '';
+    return url;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Merge the user config with the defaults.
- * @param {Record<string, unknown>} raw config returned by the SDK
+ * @param {Record<string, unknown>} [raw] config returned by the SDK
  */
 export function normalizeConfig(raw = {}) {
+  const config = raw ?? {};
+  const prefix = trimmed(config.command_prefix);
   return {
-    ...DEFAULT_CONFIG,
-    ...raw,
-    // Force the types: config may arrive as strings from a form.
-    latitude: Number(raw.latitude ?? DEFAULT_CONFIG.latitude),
-    longitude: Number(raw.longitude ?? DEFAULT_CONFIG.longitude),
-    poll_frequency: Number(raw.poll_frequency ?? DEFAULT_CONFIG.poll_frequency),
-    // The preference is a boolean; anything but an explicit false means true.
-    GLADYS_PREFER_LOCAL: raw.GLADYS_PREFER_LOCAL !== false,
+    homeserver_url: trimmed(config.homeserver_url),
+    bot_user: trimmed(config.bot_user),
+    password: typeof config.password === 'string' ? config.password : '',
+    access_token: trimmed(config.access_token),
+    rooms: parseList(config.rooms),
+    allowed_users: parseList(config.allowed_users).filter(isUserId),
+    // One to three characters, no space: "!" by default, "/" for the habits of Telegram.
+    command_prefix: prefix === '' || prefix.length > 3 ? DEFAULT_CONFIG.command_prefix : prefix,
+    language: LANGUAGES.includes(config.language) ? config.language : DEFAULT_CONFIG.language,
   };
 }
