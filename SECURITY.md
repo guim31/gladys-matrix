@@ -30,6 +30,24 @@ Gladys before reporting a problem.
 
 In scope: the code of this repository and the Docker image it publishes.
 
+What the integration keeps and where:
+
+- The configuration (homeserver address, bot user name, password, access
+  token, allowed people, watched rooms) is stored by Gladys; the password and
+  the token are `secret` fields.
+- `/data/matrix-state.json` holds the access token obtained by password login
+  and its device id, the sync position, the private room of each linked
+  person, the rooms already warned about encryption, and the last 5 messages
+  of the watched rooms (for the widget). No message of a private conversation
+  is stored.
+- The integration only talks to the configured homeserver (HTTPS or HTTP) and
+  to Gladys. It never logs a token nor a password.
+
+The bot passes the messages of a linked person to Gladys with the authority of
+that Gladys user, and only for the Matrix ids of the allowed list. Messages
+are not end-to-end encrypted: the homeserver can read them.
+
 Out of scope: Gladys Assistant itself (see its
 [security policy](https://github.com/GladysAssistant/Gladys/security/policy)),
-and the third-party services and devices the integration talks to.
+and the third-party services and devices the integration talks to (the
+homeserver and the Matrix clients).

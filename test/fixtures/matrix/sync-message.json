@@ -1,0 +1,172 @@
+{
+  "next_batch": "272",
+  "rooms": {
+    "join": {
+      "!q7FH-GaSOfZZAQYBWZShh_iYLJlZG_YLhHgfPIY0Pqk": {
+        "summary": {
+          "m.heroes": ["@alice:matrix.test"],
+          "m.joined_member_count": 2,
+          "m.invited_member_count": 0
+        },
+        "unread_notifications": {
+          "highlight_count": 0,
+          "notification_count": 1
+        },
+        "timeline": {
+          "limited": true,
+          "prev_batch": "267",
+          "events": [
+            {
+              "content": {
+                "displayname": "gladys ⚡️",
+                "membership": "join"
+              },
+              "event_id": "$joPlREG7L-gKdWrYTDd8gtcXaj8_tZvu-eyrlxTSCDo",
+              "origin_server_ts": 1792522107104,
+              "sender": "@gladys:matrix.test",
+              "state_key": "@gladys:matrix.test",
+              "type": "m.room.member",
+              "unsigned": {
+                "age": 1,
+                "prev_content": {
+                  "displayname": "gladys ⚡️",
+                  "is_direct": false,
+                  "membership": "invite"
+                },
+                "prev_sender": "@alice:matrix.test"
+              }
+            },
+            {
+              "content": {
+                "body": "!lumieres off",
+                "msgtype": "m.text"
+              },
+              "event_id": "$Wr_w4FD9LTb13meHKiw876q0WdOCjrXZsBkURhBZ1xs",
+              "origin_server_ts": 1792522107139,
+              "sender": "@alice:matrix.test",
+              "type": "m.room.message",
+              "unsigned": {
+                "age": 1
+              }
+            }
+          ]
+        },
+        "state": {
+          "events": [
+            {
+              "content": {
+                "displayname": "alice ⚡️",
+                "is_direct": false,
+                "membership": "join"
+              },
+              "event_id": "$0cdUpsXJtrjcnHBMfQiLFIsGpl6ptXpQo9fMzZUl9IM",
+              "origin_server_ts": 1792522107003,
+              "sender": "@alice:matrix.test",
+              "state_key": "@alice:matrix.test",
+              "type": "m.room.member",
+              "unsigned": {}
+            },
+            {
+              "content": {
+                "history_visibility": "shared"
+              },
+              "event_id": "$_xtW1klQcJrOjvSxkm-fo6e1DMK_GgIM9WiTcIxGrYs",
+              "origin_server_ts": 1792522107005,
+              "sender": "@alice:matrix.test",
+              "state_key": "",
+              "type": "m.room.history_visibility",
+              "unsigned": {}
+            },
+            {
+              "content": {
+                "alias": "#maison:matrix.test"
+              },
+              "event_id": "$0D3mnKxIyOjjK_Vh2y8Loh5TbS10nFWfoVmzvm-PgzU",
+              "origin_server_ts": 1792522107004,
+              "sender": "@alice:matrix.test",
+              "state_key": "",
+              "type": "m.room.canonical_alias",
+              "unsigned": {}
+            },
+            {
+              "content": {
+                "guest_access": "can_join"
+              },
+              "event_id": "$F_J0X7qaJZNYbzkZtjj75-uL4BSwAo6rzsoGzLK8DV4",
+              "origin_server_ts": 1792522107005,
+              "sender": "@alice:matrix.test",
+              "state_key": "",
+              "type": "m.room.guest_access",
+              "unsigned": {}
+            },
+            {
+              "content": {
+                "displayname": "gladys ⚡️",
+                "membership": "join"
+              },
+              "event_id": "$joPlREG7L-gKdWrYTDd8gtcXaj8_tZvu-eyrlxTSCDo",
+              "origin_server_ts": 1792522107104,
+              "sender": "@gladys:matrix.test",
+              "state_key": "@gladys:matrix.test",
+              "type": "m.room.member",
+              "unsigned": {
+                "prev_content": {
+                  "displayname": "gladys ⚡️",
+                  "is_direct": false,
+                  "membership": "invite"
+                },
+                "prev_sender": "@alice:matrix.test"
+              }
+            },
+            {
+              "content": {
+                "events": {
+                  "m.room.tombstone": 150
+                }
+              },
+              "event_id": "$bQ04Is8ZYkk-6tJvpVqwYr27m8Sm71L4yjsEoKXoWT0",
+              "origin_server_ts": 1792522107003,
+              "sender": "@alice:matrix.test",
+              "state_key": "",
+              "type": "m.room.power_levels",
+              "unsigned": {}
+            },
+            {
+              "content": {
+                "join_rule": "invite"
+              },
+              "event_id": "$QzkN5wlzYNUDW2EYQsdLzobRpQ0NAkb2SWKDJODPsm4",
+              "origin_server_ts": 1792522107004,
+              "sender": "@alice:matrix.test",
+              "state_key": "",
+              "type": "m.room.join_rules",
+              "unsigned": {}
+            },
+            {
+              "content": {
+                "name": "Maison"
+              },
+              "event_id": "$Zyd0GLA89fhE7Ul_82wASfRnFgkeTZsXJ8hxoyMgdbA",
+              "origin_server_ts": 1792522107005,
+              "sender": "@alice:matrix.test",
+              "state_key": "",
+              "type": "m.room.name",
+              "unsigned": {}
+            },
+            {
+              "content": {
+                "room_version": "12"
+              },
+              "event_id": "$q7FH-GaSOfZZAQYBWZShh_iYLJlZG_YLhHgfPIY0Pqk",
+              "origin_server_ts": 1792522107002,
+              "sender": "@alice:matrix.test",
+              "state_key": "",
+              "type": "m.room.create",
+              "unsigned": {}
+            }
+          ]
+        }
+      }
+    }
+  }
+}
