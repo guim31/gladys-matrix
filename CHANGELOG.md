@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-20
+
 ### Added
 
 - Talk to Gladys from Matrix: each Gladys user links their Matrix account with
@@ -29,4 +31,5 @@ the notes of the version's GitHub Release.
   after a restart, messages older than 5 minutes are skipped.
 - English, French, German and Spanish.
 
-[Unreleased]: https://github.com/guim31/gladys-matrix/commits/main
+[Unreleased]: https://github.com/guim31/gladys-matrix/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/guim31/gladys-matrix/releases/tag/v1.0.0
