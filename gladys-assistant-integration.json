@@ -8,8 +8,8 @@
     "de": "Sprich mit Gladys über Matrix, schreib in Räume und starte Szenen bei Nachrichten oder Befehlen.",
     "es": "Hable con Gladys desde Matrix, escriba en salas y lance escenas con mensajes o comandos."
   },
-  "version": "1.0.0",
-  "docker_image": "ghcr.io/guim31/gladys-matrix:1.0.0",
+  "version": "1.0.1",
+  "docker_image": "ghcr.io/guim31/gladys-matrix:1.0.1",
   "gladys_version": ">=5.1.0",
   "cover_image": "https://raw.githubusercontent.com/guim31/gladys-matrix/main/cover.png",
   "categories": ["notifications"],

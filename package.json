@@ -1,6 +1,6 @@
 {
   "name": "gladys-matrix",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Matrix for Gladys Assistant: talk to Gladys from Matrix, send messages to rooms, run scenes on messages and commands.",
   "type": "module",
